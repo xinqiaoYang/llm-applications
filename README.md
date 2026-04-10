@@ -13,7 +13,11 @@ Every company deploying AI in the EU must understand their compliance obligation
 This system makes the 459-page regulation queryable — directly relevant for 
 German companies navigating compliance requirements.
 
+**Official EU AI Act document:** [EUR-Lex — Regulation (EU) 2024/1689](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R1689)
+
 ## Demo
+
+![EU AI Act Assistant running in Docker](screenshot.png)
 
 Ask questions like:
 - "What AI practices are explicitly prohibited under Article 5?"
@@ -97,14 +101,14 @@ to answer definitional questions.
 
 ```bash
 # 1. Clone this repo
-git clone https://github.com/YOUR_USERNAME/llm-applications
+git clone https://github.com/xinqiaoYang/llm-applications
 cd llm-applications/my_rag
 
 # 2. Download the EU AI Act PDF
-# https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32024R1689
+# Official source: https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32024R1689
 # Save as: eu_ai_act.pdf in this folder
 
-# 3. Get a free Groq API key at console.groq.com
+# 3. Get a free Groq API key at https://console.groq.com
 ```
 
 ## Running with Docker (recommended)
@@ -125,10 +129,10 @@ source venv/bin/activate
 pip install -r requirements.txt
 export GROQ_API_KEY="your_key_here"
 
-# Run API
+# Run API (terminal 1)
 uvicorn api:app --reload
 
-# Run UI (new terminal)
+# Run UI (terminal 2)
 streamlit run app.py
 ```
 
