@@ -1,87 +1,129 @@
-# LLM Applications
+# ⚖️ EU AI Act Assistant — RAG System
 
-A comprehensive guide to building RAG-based LLM applications for production.
+A production-style Retrieval-Augmented Generation (RAG) system for querying 
+the EU Artificial Intelligence Act (Regulation 2024/1689).
 
-- **Blog post**: https://www.anyscale.com/blog/a-comprehensive-guide-for-building-rag-based-llm-applications-part-1
-- **GitHub repository**: https://github.com/ray-project/llm-applications
-- **Interactive notebook**: https://github.com/ray-project/llm-applications/blob/main/notebooks/rag.ipynb
-- **Anyscale Endpoints**: https://endpoints.anyscale.com/
-- **Ray documentation**: https://docs.ray.io/
+Built by adapting the [Ray team's LLM applications architecture](https://github.com/ray-project/llm-applications), 
+stripped of Ray cluster dependencies to run locally, with three additional 
+improvements on top of their baseline.
 
-In this guide, we will learn how to:
+## Live Demo
+- Streamlit UI: `localhost:8501`
+- REST API docs: `localhost:8000/docs`
 
-- 💻 Develop a retrieval augmented generation (RAG) based LLM application from scratch.
-- 🚀 Scale the major components (load, chunk, embed, index, serve, etc.) in our application.
-- ✅ Evaluate different configurations of our application to optimize for both per-component (ex. retrieval_score) and overall performance (quality_score).
-- 🔀 Implement LLM hybrid routing approach to bridge the gap b/w OSS and closed LLMs.
-- 📦 Serve the application in a highly scalable and available manner.
-- 💥 Share the 1st order and 2nd order impacts LLM applications have had on our products.
+## Architecture
+**Pipeline flow:**
 
-<br>
-<img width="800" src="https://images.ctfassets.net/xjan103pcp94/7FWrvPPlIdz5fs8wQgxLFz/fdae368044275028f0544a3d252fcfe4/image15.png">
+1. **Load** — PyMuPDF reads the EU AI Act PDF page by page
+2. **Chunk** — RecursiveCharacterTextSplitter splits into 300-token chunks with 50-token overlap
+3. **Embed** — all-MiniLM-L6-v2 converts each chunk into a 384-dimensional vector
+4. **Index** — vectors stored in FAISS (dense) + tokenized text stored in BM25 (sparse)
+5. **Query expansion** — Groq LLM rewrites the user query with legal terminology
+6. **Hybrid retrieve** — FAISS semantic search (top-10) + BM25 keyword search (top-20) combined with Reciprocal Rank Fusion
+7. **Rerank** — Flashrank cross-encoder rescores top-20 candidates, returns top-5
+8. **Generate** — Llama 3.1 8B via Groq produces answer grounded in retrieved context
+9. **Serve** — FastAPI REST endpoint + Streamlit UI
 
-## Setup
+## My Improvements Over the Ray Baseline
 
-### API keys
-We'll be using [OpenAI](https://platform.openai.com/docs/models/) to access ChatGPT models like `gpt-3.5-turbo`, `gpt-4`, etc. and [Anyscale Endpoints](https://endpoints.anyscale.com/) to access OSS LLMs like `Llama-2-70b`. Be sure to create your accounts for both and have your credentials ready.
+| Improvement | Reason |
+|---|---|
+| Stripped Ray cluster dependency | Runs locally, no infrastructure cost |
+| Hybrid BM25 + FAISS with RRF | BM25 catches exact legal terms (e.g. "Article 9") that semantic search misses |
+| Cross-encoder reranking (Flashrank) | Re-scores top-20 candidates jointly with query — more accurate than cosine similarity alone |
+| LLM query expansion | Enriches queries with legal terminology before retrieval |
 
-### Compute
-<details>
-  <summary>Local</summary>
-  You could run this on your local laptop but a we highly recommend using a setup with access to GPUs. You can set this up on your own or on [Anyscale](http://anyscale.com/).
-</details>
+## Chunk Size Experiment
 
-<details open>
-  <summary>Anyscale</summary><br>
-<ul>
-<li>Start a new <a href="https://console.anyscale-staging.com/o/anyscale-internal/workspaces">Anyscale workspace on staging</a> using an <a href="https://instances.vantage.sh/aws/ec2/g3.8xlarge"><code>g3.8xlarge</code></a> head node, which has 2 GPUs and 32 CPUs. We can also add GPU worker nodes to run the workloads faster. If you&#39;re not on Anyscale, you can configure a similar instance on your cloud.</li>
-<li>Use the <a href="https://docs.anyscale.com/reference/base-images/ray-262/py39#ray-2-6-2-py39"><code>default_cluster_env_2.6.2_py39</code></a> cluster environment.</li>
-<li>Use the <code>us-west-2</code> if you&#39;d like to use the artifacts in our shared storage (source docs, vector DB dumps, etc.).</li>
-</ul>
+Systematic experiment across 4 chunk sizes on the EU AI Act:
 
-</details>
+| Chunk size | Total chunks | Result |
+|---|---|---|
+| 200 | 4736 | Failed — chunks too small, context destroyed |
+| 300 | 2544 | Best — correct article references, minimal hallucination |
+| 500 | 1398 | Partial — missed definitions, honest "I don't know" |
+| 1000 | 707 | Worst — hallucinated a definition of high-risk AI |
 
-### Repository
+**Key finding:** 300 tokens worked best for legal documents. Larger chunks 
+caused the LLM to hallucinate plausible-sounding but incorrect legal definitions.
+Smaller chunks lost the context needed to answer definitional questions.
+
+## Key Technical Findings
+
+**What improved with hybrid search + reranking:**
+- Provider obligations (Article 16) — correctly cited with structured list
+- Transparency requirements (Article 13) — found correct page range
+- Risk management references — correctly located cross-references
+
+**Remaining challenge:**
+- Definitions spread across Annex I and Annex III require multi-chunk 
+  synthesis — a single retrieval step can't capture distributed information.
+  Next step: metadata-aware retrieval that knows document structure.
+
+**Query expansion failure mode discovered:**
+- LLM hallucinated article numbers in expanded queries, degrading retrieval.
+- Fix: constrained expansion prompt to legal terminology only, 
+  preserving explicit article numbers from the original query.
+
+## Tech Stack
+
+| Component | Tool |
+|---|---|
+| Document loading | PyMuPDF (LangChain) |
+| Chunking | RecursiveCharacterTextSplitter |
+| Embeddings | all-MiniLM-L6-v2 (HuggingFace) |
+| Dense retrieval | FAISS |
+| Lexical retrieval | BM25 (rank_bm25) |
+| Fusion | Reciprocal Rank Fusion |
+| Reranking | Flashrank (ms-marco-MiniLM-L-12-v2) |
+| LLM | Llama 3.1 8B via Groq (free) |
+| API serving | FastAPI + Uvicorn |
+| UI | Streamlit |
+| Orchestration | LangChain |
+
+## How to Run
+
 ```bash
-git clone https://github.com/ray-project/llm-applications.git .
-git config --global user.name <GITHUB-USERNAME>
-git config --global user.email <EMAIL-ADDRESS>
+# 1. Clone and setup
+git clone https://github.com/YOUR_USERNAME/llm-applications
+cd llm-applications/my_rag
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 2. Set API key (free at console.groq.com)
+export GROQ_API_KEY="your_key_here"
+
+# 3. Add the EU AI Act PDF
+# Download from: https://eur-lex.europa.eu/legal-content/EN/TXT/PDF/?uri=CELEX:32024R1689
+# Save as: eu_ai_act.pdf in this folder
+
+# 4a. Run pipeline directly
+python3 improved_rag.py
+
+# 4b. Or run as REST API
+uvicorn api:app --reload
+# Visit http://127.0.0.1:8000/docs
+
+# 4c. Or run Streamlit UI (keep API running in another terminal)
+streamlit run app.py
+# Visit http://localhost:8501
 ```
 
-### Data
-Our data is already ready at `/efs/shared_storage/goku/docs.ray.io/en/master/` (on Staging, `us-east-1`) but if you wanted to load it yourself, run this bash command (change `/desired/output/directory`, but make sure it's on the shared storage,
-so that it's accessible to the workers)
-```bash
-git clone https://github.com/ray-project/llm-applications.git .
-```
+## Project Files
 
-### Environment
+| File | Purpose |
+|---|---|
+| `rag.py` | Basic LangChain RAG pipeline |
+| `experiment.py` | Chunk size experiment (200/300/500/1000) |
+| `improved_rag.py` | Full pipeline with hybrid search + reranking + query expansion |
+| `api.py` | FastAPI REST endpoint |
+| `app.py` | Streamlit UI |
 
-Then set up the environment correctly by specifying the values in your `.env` file,
-and installing the dependencies:
+## Business Context
 
-```bash
-pip install --user -r requirements.txt
-export PYTHONPATH=$PYTHONPATH:$PWD
-pre-commit install
-pre-commit autoupdate
-```
-
-### Credentials
-```bash
-touch .env
-# Add environment variables to .env
-OPENAI_API_BASE="https://api.openai.com/v1"
-OPENAI_API_KEY=""  # https://platform.openai.com/account/api-keys
-ANYSCALE_API_BASE="https://api.endpoints.anyscale.com/v1"
-ANYSCALE_API_KEY=""  # https://app.endpoints.anyscale.com/credentials
-DB_CONNECTION_STRING="dbname=postgres user=postgres host=localhost password=postgres"
-source .env
-```
-
-Now we're ready to go through the [rag.ipynb](notebooks/rag.ipynb) interactive notebook to develop and serve our LLM application!
-
-### Learn more
-- If your team is investing heavily in developing LLM applications, [reach out](mailto:endpoints-help@anyscale.com) to us to learn more about how [Ray](https://github.com/ray-project/ray) and [Anyscale](http://anyscale.com/) can help you scale and productionize everything.
-- Start serving (+fine-tuning) OSS LLMs with [Anyscale Endpoints](https://endpoints.anyscale.com/) ($1/M tokens for `Llama-3-70b`) and private endpoints available upon request (1M free tokens trial).
-- Learn more about how companies like OpenAI, Netflix, Pinterest, Verizon, Instacart and others leverage Ray and Anyscale for their AI workloads at the [Ray Summit 2024](https://raysummit.anyscale.com/) this Sept 18-20 in San Francisco.
+The EU AI Act (effective August 2024) is the world's first comprehensive 
+AI regulation. Every company deploying AI in the EU must understand their 
+compliance obligations. This system makes the 459-page regulation queryable 
+in natural language — directly relevant for German companies navigating 
+compliance requirements.
