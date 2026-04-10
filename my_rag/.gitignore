@@ -1,0 +1,7 @@
+.env
+eu_ai_act.pdf
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+models/
