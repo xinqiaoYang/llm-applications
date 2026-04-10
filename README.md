@@ -19,8 +19,8 @@ improvements on top of their baseline.
 3. **Embed** — all-MiniLM-L6-v2 converts each chunk into a 384-dimensional vector
 4. **Index** — vectors stored in FAISS (dense) + tokenized text stored in BM25 (sparse)
 5. **Query expansion** — Groq LLM rewrites the user query with legal terminology
-6. **Hybrid retrieve** — FAISS semantic search (top-10) + BM25 keyword search (top-20) combined with Reciprocal Rank Fusion
-7. **Rerank** — Flashrank cross-encoder rescores top-20 candidates, returns top-5
+6. **Hybrid retrieve** — FAISS semantic search (top-10) + BM25 keyword search (top-10) combined with Reciprocal Rank Fusion, merged into top-20 candidates
+7. **Rerank** — Flashrank cross-encoder rescores top-20 candidates, returns top-3
 8. **Generate** — Llama 3.1 8B via Groq produces answer grounded in retrieved context
 9. **Serve** — FastAPI REST endpoint + Streamlit UI
 
