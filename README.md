@@ -17,7 +17,8 @@ German companies navigating compliance requirements.
 
 ## Demo
 
-![EU AI Act Assistant running in Docker](my_rag/图片1.png)
+![EU AI Act Assistant – question and answer](my_rag/图片%201.png)
+![EU AI Act Assistant – requirements and sources](my_rag/图片%202.png)
 
 Ask questions like:
 - "What AI practices are explicitly prohibited under Article 5?"
